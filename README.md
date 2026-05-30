@@ -50,4 +50,5 @@ npm run dev:client
 
 - Frontend: React, Vite, CSS (custom animations + 3D interactions)
 - Backend: Node.js, Express, Mongoose
-- DB: MongoDB
+- DB: MongoDB Atlas
+
