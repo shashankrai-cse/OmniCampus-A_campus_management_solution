@@ -1,5 +1,11 @@
 // ─────────────────────────────────────────────────────────
-// Auth Middleware – JWT verification & role-based access
+// Auth Middleware – Passport session check + JWT fallback
+// ─────────────────────────────────────────────────────────
+// protect() works in two modes:
+//   1. Passport session  – browser clients (cookies)
+//   2. JWT Bearer token  – mobile / API clients (Authorization header)
+// authorize() and authorizeDashboardRoleParam() are unchanged;
+// they both rely on req.user which either mode populates.
 // ─────────────────────────────────────────────────────────
 
 import jwt from 'jsonwebtoken';
@@ -19,18 +25,26 @@ function extractToken(authorizationHeader = '') {
 }
 
 // ─────────────────────────────────────────────────────────
-// authMiddleware (protect)
-// Verifies the JWT access token and attaches req.user
+// protect
+// Priority 1 – Passport session (req.isAuthenticated())
+// Priority 2 – JWT Bearer token (Authorization header)
 // ─────────────────────────────────────────────────────────
 export async function protect(req, res, next) {
+  // ── 1. Passport session check ─────────────────────────
+  if (typeof req.isAuthenticated === 'function' && req.isAuthenticated()) {
+    // req.user is already populated by passport.deserializeUser
+    return next();
+  }
+
+  // ── 2. JWT Bearer fallback ────────────────────────────
   try {
     const token = extractToken(req.headers.authorization);
 
-    // 401 – no token provided
+    // 401 – no token provided and no active session
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Authorization token missing'
+        message: 'Authorization token missing – please log in'
       });
     }
 
@@ -76,8 +90,9 @@ export async function protect(req, res, next) {
 }
 
 // ─────────────────────────────────────────────────────────
-// roleMiddleware (authorize)
-// Restricts access to routes based on user role
+// authorize (roleMiddleware)
+// Restricts access to routes based on user role.
+// Must be called after protect middleware.
 // Usage: authorize('admin') or authorize('admin', 'teacher')
 // ─────────────────────────────────────────────────────────
 export function authorize(...allowedRoles) {
@@ -103,7 +118,7 @@ export function authorize(...allowedRoles) {
 }
 
 // ─────────────────────────────────────────────────────────
-// Dashboard role-param guard
+// authorizeDashboardRoleParam
 // Ensures the :role param matches the authenticated user's role
 // ─────────────────────────────────────────────────────────
 export function authorizeDashboardRoleParam(req, res, next) {

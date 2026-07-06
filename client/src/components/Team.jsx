@@ -12,19 +12,9 @@ const teamMembers = [
     image: "https://res.cloudinary.com/dft7k0axp/image/upload/v1776016778/smart_campus_team/mycclpyhxehnxccup225.png",
   },
   {
-    name: "Shashwat Mishra",
-    role: "Developer",
-    image: "https://res.cloudinary.com/dft7k0axp/image/upload/v1776016780/smart_campus_team/dfl1bnivvknejg6amjog.png",
-  },
-  {
     name: "Shubham Shukla",
     role: "Developer",
     image: "https://res.cloudinary.com/dft7k0axp/image/upload/v1776017025/smart_campus_team/ohqauafzphiaflplnnn4.png",
-  },
-  {
-    name: "YashDeep Gupta",
-    role: "Developer",
-    image: "https://res.cloudinary.com/dft7k0axp/image/upload/v1776016782/smart_campus_team/ccr8chzc41azro0i3yqf.png",
   }
 ];
 

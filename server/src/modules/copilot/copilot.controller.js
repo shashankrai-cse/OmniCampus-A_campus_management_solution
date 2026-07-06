@@ -40,6 +40,20 @@ function cosineSimilarity(a, b) {
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
+// ── In-Memory Semantic Cache ────────────────────────────
+let inMemoryCopilotCache = null;
+let lastCacheUpdate = 0;
+const CACHE_TTL = 2 * 60 * 1000; // Refresh every 2 minutes
+
+async function getCopilotCache() {
+  const now = Date.now();
+  if (!inMemoryCopilotCache || now - lastCacheUpdate > CACHE_TTL) {
+    inMemoryCopilotCache = await CopilotCache.find({}).lean();
+    lastCacheUpdate = now;
+  }
+  return inMemoryCopilotCache;
+}
+
 // ── System Prompt ───────────────────────────────────────
 const SYSTEM_PROMPT = `You are the OmniCampus Copilot — the official AI assistant for the OmniCampus Operating System, a smart campus platform.
 
@@ -69,7 +83,7 @@ export async function chat(req, res) {
     const queryEmbedding = await getEmbedding(message);
 
     // ── Step 2: Check semantic cache ────────────────────
-    const cachedEntries = await CopilotCache.find({}).lean();
+    const cachedEntries = await getCopilotCache();
     let bestMatch = null;
     let bestScore = 0;
 
@@ -167,12 +181,17 @@ export async function chat(req, res) {
     }
 
     // ── Step 5: Cache the response ──────────────────────
-    await CopilotCache.create({
+    const newCacheEntry = await CopilotCache.create({
       question: message,
       answer,
       embedding: queryEmbedding,
       context: userContext
     });
+    
+    // Optimistically update the in-memory cache
+    if (inMemoryCopilotCache) {
+      inMemoryCopilotCache.push(newCacheEntry);
+    }
 
     return res.json({
       answer,

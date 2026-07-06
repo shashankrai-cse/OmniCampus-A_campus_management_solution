@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { protect, authorize } from '../../middleware/auth.js';
-import { getUsers, updateUser, deleteUser, uploadAvatar, removeAvatar, bulkPromote } from './user.controller.js';
+import { getUsers, updateUser, deleteUser, uploadAvatar, removeAvatar, bulkPromote, bulkAddUsers, bulkRemoveUsers } from './user.controller.js';
 import { avatarUploader } from '../../utils/upload.js';
 
 const router = Router();
@@ -16,6 +16,8 @@ router.use(authorize('admin', 'teacher'));
 
 router.get('/', getUsers);
 router.post('/bulk-promote', bulkPromote);
+router.post('/bulk-add', bulkAddUsers);
+router.post('/bulk-remove', bulkRemoveUsers);
 router.put('/:id', updateUser);
 router.delete('/:id', deleteUser);
 

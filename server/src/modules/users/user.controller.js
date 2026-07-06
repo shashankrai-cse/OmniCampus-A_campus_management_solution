@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { User } from '../auth/auth.model.js';
 
 // Get list of users based on permissions
@@ -115,6 +116,91 @@ export async function bulkPromote(req, res, next) {
 
     const result = await User.updateMany(filter, { $set: updatePlayload });
     return res.status(200).json({ success: true, message: `Successfully updated ${result.modifiedCount} students.` });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// Bulk Add Users
+export async function bulkAddUsers(req, res, next) {
+  try {
+    if (req.user.role === 'student') return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    const usersData = req.body;
+    if (!Array.isArray(usersData) || usersData.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid payload: Array of users expected.' });
+    }
+
+    let addedCount = 0;
+    let errors = [];
+
+    // 1. Fetch all existing emails in one go
+    const incomingEmails = usersData.map(u => u.email);
+    const existingUsers = await User.find({ email: { $in: incomingEmails } }).select('email').lean();
+    const existingEmailSet = new Set(existingUsers.map(u => u.email));
+
+    // 2. Filter out existing users
+    const newUsersData = usersData.filter(u => {
+      if (existingEmailSet.has(u.email)) {
+        errors.push(`Email ${u.email} already exists.`);
+        return false;
+      }
+      return true;
+    });
+
+    // 3. Pre-hash passwords, caching identical passwords to save CPU and prevent event-loop freezing
+    const passwordCache = {};
+    const usersToInsert = [];
+    
+    for (const u of newUsersData) {
+      if (!passwordCache[u.password]) {
+        // Lower salt to 4 for bulk imports to prevent CPU lockups when uploading massive files with unique passwords
+        passwordCache[u.password] = await bcrypt.hash(u.password, 4);
+      }
+      usersToInsert.push({
+        ...u,
+        password: passwordCache[u.password],
+        avatarSeed: Math.random().toString(36).substring(7)
+      });
+    }
+
+    // 4. Batch insert all new users
+    if (usersToInsert.length > 0) {
+      await User.insertMany(usersToInsert);
+      addedCount = usersToInsert.length;
+    }
+
+    return res.status(200).json({ 
+      success: true, 
+      message: `Successfully added ${addedCount} users.`,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// Bulk Remove Users
+export async function bulkRemoveUsers(req, res, next) {
+  try {
+    if (req.user.role === 'student') return res.status(403).json({ success: false, message: 'Unauthorized' });
+
+    const emails = req.body;
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid payload: Array of emails expected.' });
+    }
+
+    let filter = { email: { $in: emails } };
+    if (req.user.role === 'teacher') {
+      filter.role = 'student'; // Teachers can only bulk delete students
+    }
+
+    const result = await User.deleteMany(filter);
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: `Successfully deleted ${result.deletedCount} users.`
+    });
   } catch (error) {
     return next(error);
   }

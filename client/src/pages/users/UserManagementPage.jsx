@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import api from '../../api/client.js';
 import { DEPARTMENTS } from '../../constants.js';
@@ -113,6 +113,82 @@ export default function UserManagementPage() {
     }
   }
 
+  const addFileInputRef = useRef(null);
+  const removeFileInputRef = useRef(null);
+
+  const handleBulkAddCsv = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length < 2) return alert('Invalid CSV format. Needs headers and data.');
+      
+      const headers = lines[0].split(',').map(h => h.trim());
+      const usersData = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        const userObj = {};
+        headers.forEach((h, idx) => {
+          if (values[idx]) userObj[h] = values[idx];
+        });
+        if (userObj.email && userObj.fullName && userObj.password) {
+          usersData.push(userObj);
+        }
+      }
+      
+      if (usersData.length === 0) return alert('No valid users found in CSV.');
+      
+      try {
+        const { data } = await api.post('/users/bulk-add', usersData);
+        alert(data.message + (data.errors ? '\nErrors: ' + data.errors.join(', ') : ''));
+        fetchUsers();
+      } catch (err) {
+        alert(err.response?.data?.message || 'Failed to bulk add users.');
+      }
+      e.target.value = null;
+    };
+    reader.readAsText(file);
+  };
+
+  const handleBulkRemoveCsv = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length < 2) return alert('Invalid CSV format. Needs header and data.');
+      
+      const headers = lines[0].split(',').map(h => h.trim());
+      if (headers[0] !== 'email') return alert('CSV header must be exactly "email".');
+      
+      const emails = [];
+      for (let i = 1; i < lines.length; i++) {
+        const email = lines[i].split(',')[0]?.trim();
+        if (email) emails.push(email);
+      }
+      
+      if (emails.length === 0) return alert('No valid emails found in CSV.');
+      
+      if (!window.confirm(`Are you sure you want to bulk delete ${emails.length} users?`)) {
+        e.target.value = null;
+        return;
+      }
+
+      try {
+        const { data } = await api.post('/users/bulk-remove', emails);
+        alert(data.message);
+        fetchUsers();
+      } catch (err) {
+        alert(err.response?.data?.message || 'Failed to bulk remove users.');
+      }
+      e.target.value = null;
+    };
+    reader.readAsText(file);
+  };
+
   const filteredUsers = users.filter(u => {
     if (filterDept && u.department !== filterDept) return false;
     if (filterYear && String(u.enrollmentYear) !== filterYear) return false;
@@ -144,14 +220,37 @@ export default function UserManagementPage() {
             Manage campus roster, update student records, and handle promotions
           </p>
         </div>
-        <button 
-          className="btn-primary"
-          onClick={() => setShowBulkModal(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 8px 16px rgba(17,24,39,0.15)' }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-          Bulk Promote
-        </button>
+        <div style={{ display: 'flex', gap: '0.8rem' }}>
+          <input type="file" accept=".csv" ref={addFileInputRef} style={{ display: 'none' }} onChange={handleBulkAddCsv} />
+          <input type="file" accept=".csv" ref={removeFileInputRef} style={{ display: 'none' }} onChange={handleBulkRemoveCsv} />
+          
+          <button 
+            className="btn-outline"
+            onClick={() => addFileInputRef.current?.click()}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: '#059669', borderColor: '#34d399' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Add (CSV)
+          </button>
+
+          <button 
+            className="btn-outline"
+            onClick={() => removeFileInputRef.current?.click()}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: '#dc2626', borderColor: '#fca5a5' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Remove (CSV)
+          </button>
+
+          <button 
+            className="btn-primary"
+            onClick={() => setShowBulkModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', boxShadow: '0 8px 16px rgba(17,24,39,0.15)' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Bulk Promote
+          </button>
+        </div>
       </div>
 
       {/* ─── Summary Stats ─── */}

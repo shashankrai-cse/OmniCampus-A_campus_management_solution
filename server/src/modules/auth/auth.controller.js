@@ -1,7 +1,10 @@
 // ─────────────────────────────────────────────────────────
 // Auth Controller – register, login, me, refresh, logout
+// Login now establishes a Passport session (connect-mongo)
+// and still returns JWT tokens for API/mobile clients.
 // ─────────────────────────────────────────────────────────
 
+import passport from 'passport';
 import { User } from './auth.model.js';
 import {
   signAccessToken,
@@ -40,7 +43,7 @@ export async function register(req, res, next) {
       avatarSeed
     });
 
-    // Generate tokens
+    // Generate tokens (for API / mobile clients)
     const userData = user.toSafeObject();
     const accessToken = signAccessToken(userData);
     const refreshToken = signRefreshToken(userData);
@@ -65,63 +68,63 @@ export async function register(req, res, next) {
 
 // ─────────────────────────────────────────────────────────
 // POST /api/v1/auth/login
-// Authenticates user and returns access + refresh tokens
+// passport.authenticate('local') runs first (via route middleware).
+// If credentials are valid, req.user is set by Passport.
+// We then call req.logIn() to create a session and also return
+// JWT tokens so API / mobile clients can authenticate stateless.
 // ─────────────────────────────────────────────────────────
-export async function login(req, res, next) {
-  try {
-    const { email, password } = req.body;
+export function login(req, res, next) {
+  passport.authenticate('local', async (err, user, info) => {
+    // Internal error during strategy execution
+    if (err) return next(err);
 
-    // Find user with password field included
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      '+password +refreshToken'
-    );
-
+    // Authentication failed – wrong credentials
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: info?.message || 'Invalid email or password'
       });
     }
 
-    // Verify password
-    const passwordMatch = await user.comparePassword(password);
+    // Establish a Passport session (browser clients)
+    req.logIn(user, async (loginErr) => {
+      if (loginErr) return next(loginErr);
 
-    if (!passwordMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
-    }
+      try {
+        // Update last login timestamp
+        user.lastLoginAt = new Date();
 
-    // Update last login timestamp
-    user.lastLoginAt = new Date();
+        // Generate fresh JWT tokens (API / mobile clients)
+        const userData = user.toSafeObject();
+        const accessToken = signAccessToken(userData);
+        const refreshToken = signRefreshToken(userData);
 
-    // Generate fresh tokens
-    const userData = user.toSafeObject();
-    const accessToken = signAccessToken(userData);
-    const refreshToken = signRefreshToken(userData);
+        // Persist refresh token (rotation)
+        user.refreshToken = refreshToken;
+        await user.save();
 
-    // Persist new refresh token (rotation)
-    user.refreshToken = refreshToken;
-    await user.save();
-
-    return res.status(200).json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        user: userData,
-        token: accessToken,
-        refreshToken
+        return res.status(200).json({
+          success: true,
+          message: 'Login successful',
+          data: {
+            user: userData,
+            token: accessToken,         // JWT bearer token for API clients
+            refreshToken               // JWT refresh token for API clients
+            // Browser clients rely on the session cookie automatically
+          }
+        });
+      } catch (saveErr) {
+        return next(saveErr);
       }
     });
-  } catch (error) {
-    return next(error);
-  }
+  })(req, res, next);
 }
 
 // ─────────────────────────────────────────────────────────
 // GET /api/v1/auth/me
-// Returns the currently authenticated user's profile
+// Returns the currently authenticated user's profile.
+// Works for both session and JWT-based auth (req.user is
+// populated by the protect middleware in both cases).
 // ─────────────────────────────────────────────────────────
 export async function me(req, res) {
   return res.status(200).json({
@@ -134,8 +137,8 @@ export async function me(req, res) {
 
 // ─────────────────────────────────────────────────────────
 // POST /api/v1/auth/refresh
-// Accepts a refresh token and returns a new access token
-// (+ a rotated refresh token for extra security)
+// Accepts a JWT refresh token and returns a new access token
+// (+ a rotated refresh token). Stateless – for API clients.
 // ─────────────────────────────────────────────────────────
 export async function refreshAccessToken(req, res, next) {
   try {
@@ -191,21 +194,38 @@ export async function refreshAccessToken(req, res, next) {
 
 // ─────────────────────────────────────────────────────────
 // POST /api/v1/auth/logout
-// Invalidates the refresh token (server-side sign-out)
+// Destroys the Passport session (browser clients) and
+// invalidates the stored refresh token (API clients).
 // ─────────────────────────────────────────────────────────
 export async function logout(req, res, next) {
   try {
-    // req.user is set by protect middleware
-    const user = await User.findById(req.user._id).select('+refreshToken');
+    // Clear the stored refresh token from DB (API clients)
+    if (req.user) {
+      const user = await User.findById(req.user._id).select('+refreshToken');
 
-    if (user) {
-      user.refreshToken = null;
-      await user.save();
+      if (user) {
+        user.refreshToken = null;
+        await user.save();
+      }
     }
 
-    return res.status(200).json({
-      success: true,
-      message: 'Logged out successfully'
+    // Destroy the Passport session (browser clients)
+    req.logout((logoutErr) => {
+      if (logoutErr) return next(logoutErr);
+
+      // Destroy the underlying session and clear cookie
+      req.session.destroy((destroyErr) => {
+        if (destroyErr) {
+          // Non-fatal – respond OK anyway
+          console.error('Session destroy error:', destroyErr);
+        }
+
+        res.clearCookie('connect.sid');
+        return res.status(200).json({
+          success: true,
+          message: 'Logged out successfully'
+        });
+      });
     });
   } catch (error) {
     return next(error);

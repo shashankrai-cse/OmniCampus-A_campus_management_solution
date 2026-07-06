@@ -7,6 +7,20 @@ import { CampusLocation } from '../location/location.model.js';
 import { Subject } from '../subject/subject.model.js';
 import { isWithinCampus } from '../../utils/geo.js';
 
+// ── In-Memory Cache for Campus Locations ──────────────────
+let cachedCampusLocations = null;
+let campusLocationsLastFetched = 0;
+const CAMPUS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getActiveCampusLocations() {
+  const now = Date.now();
+  if (!cachedCampusLocations || now - campusLocationsLastFetched > CAMPUS_CACHE_TTL) {
+    cachedCampusLocations = await CampusLocation.find({ isActive: true });
+    campusLocationsLastFetched = now;
+  }
+  return cachedCampusLocations;
+}
+
 // ── POST /sessions – Teacher creates a new attendance session
 export async function createSession(req, res, next) {
   try {
@@ -82,7 +96,7 @@ export async function markAttendance(req, res, next) {
     }
 
     // 4. Geolocation check – student must be within radius of ANY active campus
-    const campusLocations = await CampusLocation.find({ isActive: true });
+    const campusLocations = await getActiveCampusLocations();
 
     if (campusLocations.length === 0) {
       return res.status(500).json({

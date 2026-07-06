@@ -13,6 +13,10 @@ const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
 
+  // Session (Passport / connect-mongo)
+  sessionSecret: process.env.SESSION_SECRET || process.env.JWT_SECRET || 'replace-with-secure-secret',
+  sessionMaxAgeDays: parseInt(process.env.SESSION_MAX_AGE_DAYS || '7', 10),
+
   // Access-token signing
   jwtSecret: process.env.JWT_SECRET || 'replace-with-secure-secret',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
