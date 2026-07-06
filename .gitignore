@@ -1,6 +1,15 @@
 node_modules
+docs
 .env
 .env.local
 client/dist
 server/logs
 .DS_Store
+
+# Server ignored files
+server/BENCHMARK_REPORT.html
+server/BENCHMARK_REPORT.md
+server/benchmark_test.js
+server/seedAdmin.js
+server/seedLocalCampus.js
+server/seedUsers2.js
