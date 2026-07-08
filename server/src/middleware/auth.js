@@ -11,7 +11,7 @@
 import jwt from 'jsonwebtoken';
 import env from '../config/env.js';
 import { USER_ROLES } from '../modules/auth/auth.constants.js';
-import { User } from '../modules/auth/auth.model.js';
+import { Session } from '../modules/auth/session.model.js';
 
 // ── Helper: extract Bearer token from Authorization header ─
 function extractToken(authorizationHeader = '') {
@@ -24,23 +24,11 @@ function extractToken(authorizationHeader = '') {
   return token;
 }
 
-// ─────────────────────────────────────────────────────────
-// protect
-// Priority 1 – Passport session (req.isAuthenticated())
-// Priority 2 – JWT Bearer token (Authorization header)
-// ─────────────────────────────────────────────────────────
 export async function protect(req, res, next) {
-  // ── 1. Passport session check ─────────────────────────
-  if (typeof req.isAuthenticated === 'function' && req.isAuthenticated()) {
-    // req.user is already populated by passport.deserializeUser
-    return next();
-  }
-
-  // ── 2. JWT Bearer fallback ────────────────────────────
   try {
     const token = extractToken(req.headers.authorization);
 
-    // 401 – no token provided and no active session
+    // 401 – no token provided
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -51,19 +39,27 @@ export async function protect(req, res, next) {
     // Verify token signature + expiry
     const decoded = jwt.verify(token, env.jwtSecret);
 
-    // Fetch the corresponding user from DB
-    const user = await User.findById(decoded.sub);
-
-    // 401 – user no longer exists
-    if (!user) {
+    if (!decoded.sessionId) {
       return res.status(401).json({
         success: false,
-        message: 'User belonging to this token no longer exists'
+        message: 'Invalid token format – missing session ID'
       });
     }
 
-    // Attach user to request for downstream handlers
-    req.user = user;
+    // Fetch the corresponding session from DB (Bypassing User query)
+    const session = await Session.findById(decoded.sessionId);
+
+    // 401 – session no longer exists
+    if (!session) {
+      return res.status(401).json({
+        success: false,
+        message: 'Session has expired or was logged out. Please log in again.'
+      });
+    }
+
+    // Attach cached user to request for downstream handlers
+    req.user = session.user;
+    req.sessionId = session._id;
     return next();
   } catch (error) {
     // Handle specific JWT errors with meaningful messages

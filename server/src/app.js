@@ -7,9 +7,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import session from 'express-session';
-import MongoStore from 'connect-mongo';
-import passport from './config/passport.js';
 
 import env from './config/env.js';
 import healthRoutes from './modules/health/health.routes.js';
@@ -45,34 +42,6 @@ app.use(
   })
 );
 app.use(express.json({ limit: '10mb' }));
-
-// ── MongoDB-backed Session Store ─────────────────────────
-// Sessions are persisted in the 'sessions' collection so they
-// survive server restarts. connect-mongo reuses the existing
-// Mongoose connection automatically once Mongoose is connected.
-app.use(
-  session({
-    secret: env.sessionSecret,
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-      mongoUrl: env.mongoUri,
-      collectionName: 'sessions',
-      ttl: env.sessionMaxAgeDays * 24 * 60 * 60, // in seconds
-      touchAfter: 24 * 3600 // time period in seconds
-    }),
-    cookie: {
-      httpOnly: true,
-      secure: env.nodeEnv === 'production',  // HTTPS-only in prod
-      sameSite: env.nodeEnv === 'production' ? 'none' : 'lax',
-      maxAge: env.sessionMaxAgeDays * 24 * 60 * 60 * 1000  // ms
-    }
-  })
-);
-
-// ── Passport (session-based auth) ────────────────────────
-app.use(passport.initialize());
-app.use(passport.session());
 
 // ── Serve uploaded files statically (local fallback when Cloudinary is not configured)
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));

@@ -7,11 +7,12 @@ import env from '../config/env.js';
 
 /**
  * Sign a short-lived access token.
- * Payload includes: sub (user id), role, name.
+ * Payload includes: sessionId, sub (user id), role, name.
  */
-export function signAccessToken(user) {
+export function signAccessToken(sessionId, user) {
   return jwt.sign(
     {
+      sessionId: sessionId.toString(),
       sub: user.id,
       role: user.role,
       name: user.fullName
